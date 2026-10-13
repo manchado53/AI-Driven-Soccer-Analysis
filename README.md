@@ -1,222 +1,202 @@
-# TheScript (Rosco AI)
+# AI-Driven Soccer Analysis — single-camera CV pipeline
 
-A computer vision pipeline for real-time soccer match analytics, built by Tanner Selio and Adrian Manchado to assist MSOE's men's soccer coach, Rob Harrington, with data-driven insights from game footage. Using only a single camera setup and no expensive hardware, Rosco AI brings professional-level sports analytics to a D3 soccer program — detecting players and the ball, tracking them across frames, mapping their positions onto a real-world field model, and computing per-player and per-team metrics.
+*Formerly "TheScript" / Rosco AI*
 
-## Demos
+**One cheap camera in, coach-ready match analytics out.** Detects and tracks every player and the ball, maps them onto a real-world field, and turns the video into speed, distance, possession, and heatmaps for a D3 college soccer team.
 
-- [Annotated match video with player speed, distance, and possession overlays](https://www.youtube.com/watch?v=HKj34-95-PM)
-- [2D bird's-eye field projection with real-time player positions](https://www.youtube.com/watch?v=loeXq97BnCw)
-- [Full presentation: AI-Driven Soccer Analysis Using Computer Vision](https://www.youtube.com/watch?v=UKSFIYSSHr8&t=52s)
+[![Tracking demo](https://img.shields.io/badge/▶_Demo-Players,_ball_%26_ref_tracking-FF0000?logo=youtube&logoColor=white)](https://www.youtube.com/watch?v=HKj34-95-PM)
+[![Stats demo](https://img.shields.io/badge/▶_Demo-Possession,_speed_%26_distance-FF0000?logo=youtube&logoColor=white)](https://www.youtube.com/watch?v=loeXq97BnCw)
+[![Presentation](https://img.shields.io/badge/▶_Talk-Full_presentation-FF0000?logo=youtube&logoColor=white)](https://www.youtube.com/watch?v=UKSFIYSSHr8&t=52s)
+[![Roboflow dataset](https://img.shields.io/badge/Built_with-Roboflow-6706CE)](https://universe.roboflow.com/manchado53/keypoint-msoe/dataset/6)
 
-## What We Built
+<a href="https://www.youtube.com/watch?v=HKj34-95-PM"><img src="https://img.youtube.com/vi/HKj34-95-PM/hqdefault.jpg" alt="Demo: ball, players and referee tracked, with 2D heatmap" width="49%"></a>
+<a href="https://www.youtube.com/watch?v=loeXq97BnCw"><img src="https://img.youtube.com/vi/loeXq97BnCw/hqdefault.jpg" alt="Demo: possession, speed and distance stats from computer vision" width="49%"></a>
 
-### Player Detection & Team Classification
-**YOLO** (You Only Look Once) detects players in each frame by identifying pixel patterns through convolutional neural networks. Teams are differentiated by analyzing jersey colors — pixel color averaging and **K-Means clustering** group similar colors to separate teams. Outlier colors (e.g., bright yellow) enable automatic detection of referees.
+*Click a thumbnail to watch. Left: ball, players and referee tracked with a 2D heatmap. Right: possession, speed and distance stats.*
 
-### Player Tracking
-YOLO operates on single frames without memory, so **SAM 2** (Segment Anything Model 2) is used to track players across frames. SAM 2 maintains a rolling memory of past frames to link player appearances and locations, assigning each player a unique ID for continuous tracking. When a player leaves and re-enters the frame, YOLO re-prompts SAM 2 to recover their identity. Occlusions (players overlapping) are detected via IOU overlap and handled by re-prompting SAM 2 on affected frames.
+Built by **Adrian Manchado** and **Tanner Selio** <!-- TODO(Adrian): confirm surname spelling (Selio vs Cellio — the YouTube talk title says Cellio) --> for MSOE men's soccer coach **Rob Harrington**.
 
-### Ball Detection & Tracking
-YOLO also detects the ball, which is challenging due to its small size, high speed, and frequent occlusions. When the ball is not visible, a **Kalman filter** predicts its position based on velocity and trajectory, maintaining continuous ball tracking even through occluded frames.
+## Highlights
 
-### Field Keypoint Detection
-We trained a **YOLOv8x-pose** model to detect 12 key landmarks on a soccer field (center circle edges, midfield line intersections, penalty-box D-line intersections, etc.). Training data was annotated across 6 iterative dataset versions on [Roboflow](https://universe.roboflow.com/manchado53/keypoint-msoe/dataset/6) using Label Studio and converted to COCO/YOLO format. We also built a custom **CNN baseline** in TensorFlow/Keras with dual outputs (keypoint visibility classification + coordinate regression) to compare approaches.
+- **Single camera, no special hardware.** Pro-style analytics for a D3 program that can't buy a multi-camera tracking system.
+- **Custom field-keypoint model.** Fine-tuned **YOLOv8x-pose** to find 12 field landmarks. The dataset was hand-labeled and refined over **6 versions**, published on [Roboflow Universe](https://universe.roboflow.com/manchado53/keypoint-msoe/dataset/6).
+- **Pixels to meters.** Per-frame homography to a 107.79 m × 63.74 m FIFA-standard field, exponentially smoothed (α = 0.8) to remove jitter.
+- **Detection + tracking stack.** YOLO detection, **SAM 2** tracking with re-prompting on occlusion and re-entry, a **Kalman filter** for the ball, and **K-Means** jersey-color clustering for teams and referees.
+- **Coach-facing outputs.** Speed, distance, off-ball runs, possession by zone, zone occupancy, heatmaps, and an annotated video.
+- **Trained on a supercomputer.** Training and inference ran as SLURM jobs on MSOE's **Rosie** cluster (V100, T4, and DGX H100 nodes). See [`scripts/`](scripts/).
 
-### White-Line Enhancement Preprocessing
-Before running keypoint inference, each frame is converted to HSV color space and a binary mask isolates white pixels. Morphological dilation thickens the detected field lines, making them more robust to varying lighting and camera conditions.
+<!-- TODO(Adrian): add keypoint model metrics (e.g. mAP50 / mAP50-95 / OKS on the v6 validation split) -->
+<!-- TODO(Adrian): add dataset size (number of labeled images in keypoint-msoe v6) -->
+<!-- TODO(Adrian): add pipeline throughput (frames per second on the H100) -->
 
-### Homography & Coordinate Transformation
-Predicted keypoints in camera-pixel space are matched to their known real-world positions on a FIFA-standard field (107.79 m x 63.74 m). A homography matrix is computed via `cv2.findHomography` and **exponentially smoothed** (alpha = 0.8) across frames to avoid jitter. This matrix transforms any 2D pixel coordinate (player, ball) into metric field coordinates.
+## The pipeline: first mile → middle mile → last mile
 
-### Player Analytics
-Using the bounding boxes from YOLO + SAM 2 and the homography-transformed field coordinates, the pipeline computes:
-- **Speed** (m/s) from consecutive transformed positions
-- **Total distance** traveled per player
-- **Off-ball runs** (high-speed movement without possession)
-- **Team identification** via color clustering with per-player color assignments
+| Stage | Question | What we built |
+|---|---|---|
+| **First mile** | *Can we even see it?* | One affordable camera. HSV white-line mask + dilation so field lines survive bad lighting. Camera-to-field calibration from detected keypoints + homography. |
+| **Middle mile** | *Can the models understand it?* | YOLO player/ball detection · YOLOv8x-pose field keypoints (6 Roboflow dataset iterations) · custom TF/Keras CNN baseline · SAM 2 tracking · Kalman ball filter · K-Means team clustering |
+| **Last mile** | *So what? Does a coach use it?* | Speed, distance, off-ball runs, possession by 3×3 zone, zone occupancy by third, heatmaps, annotated + bird's-eye video |
 
-### Ball Possession Analysis
-A `PossessionTracker` divides the field into a 3x3 grid of zones. Each frame, the closest player to the ball (within a threshold radius) is credited with possession. The system outputs per-team possession percentages both overall and per zone.
-
-### Zone Occupancy Tracking
-Field is split into defensive, middle, and attacking thirds. The system tracks how many players from each team occupy each zone over time, providing tactical formation insights.
-
-### Visualization & Output
-The pipeline generates annotated video with:
-- Color-coded player dots by team
-- Real-time speed (m/s) and cumulative distance (m) overlays per player
-- Ball position marker
-- Team possession percentages displayed in an on-screen HUD
-- Player heatmaps showing movement density
-
-## Project Structure
-
-```
-TheScript/
-├── README.md
-├── requirements.txt
-├── .gitignore
-│
-├── src/                                # All Python source code
-│   ├── main.py                         #   Primary video processing pipeline
-│   ├── main_cnn.py                     #   CNN-based variant of the pipeline
-│   ├── constants.py                    #   Model path configuration
-│   ├── soccer_util_last.py             #   Core utilities: preprocessing, homography,
-│   │                                   #     CNN model, field constants, evaluation
-│   ├── keypoint_model.py               #   YOLO pose model wrapper
-│   ├── grouping_teams.py               #   Player-to-team mapping and color management
-│   ├── distance_speed_stimator.py      #   Speed/distance from transformed coordinates
-│   ├── possesion_tracker.py            #   Ball possession tracking by field zone
-│   ├── stimating_team_position.py      #   Defensive/middle/attacking zone occupancy
-│   ├── heatmap.py                      #   Player movement heatmap generation
-│   ├── video_creator.py                #   2D field-map and annotated video rendering
-│   └── transforming_json_keypoints.py  #   Label Studio JSON -> COCO format converter
-│
-├── notebooks/                          # Jupyter notebooks
-│   ├── FullHomography_03_21_2025.ipynb #   Homography exploration
-│   └── uploading.ipynb                 #   Data upload/processing
-│
-├── scripts/                            # SLURM job submission scripts
-│   ├── run_job.sh                      #   Inference on DGX H100
-│   └── train_yolo_pose_slurm.sh        #   YOLOv8 training on V100s
-│
-├── weights/                            # Model weight files (gitignored)
-│   ├── best.pt                         #   Fine-tuned YOLOv8 pose weights
-│   ├── yolov8x-pose.pt                 #   YOLOv8 Extra Large pose base weights
-│   ├── yolov8n-pose.pt                 #   YOLOv8 Nano pose weights
-│   └── yolov8n.pt                      #   YOLOv8 Nano detection weights
-│
-├── data/                               # Training datasets (gitignored)
-│   └── keypoint-msoe-{1..6}/          #   Iterative Roboflow datasets (CC BY 4.0)
-│
-├── assets/                             # Static resources
-│   └── viets field.PNG                 #   Reference soccer field diagram
-│
-├── logs/                               # SLURM job output logs (gitignored)
-└── runs/                               # YOLOv8 training outputs (gitignored)
+```mermaid
+flowchart LR
+    subgraph FM["First mile: see it"]
+        V[Single-camera<br/>match video] --> HSV[HSV white-line<br/>mask + dilation]
+    end
+    subgraph MM["Middle mile: models"]
+        DET[YOLO detection<br/>players + ball]
+        DET --> SAM[SAM 2 tracking<br/>re-prompt on occlusion / re-entry]
+        DET --> KF[Kalman filter<br/>ball when occluded]
+        DET --> KM[K-Means jersey color<br/>teams + referees]
+        KP[YOLOv8x-pose<br/>12 field keypoints] --> H[Homography<br/>smoothed α = 0.8]
+    end
+    subgraph LM["Last mile: so what?"]
+        M[Field coords<br/>in meters]
+        M --> S[Speed / distance /<br/>off-ball runs]
+        M --> P[Possession<br/>by 3×3 zone]
+        M --> Z[Zone occupancy<br/>by third]
+        M --> HM[Heatmaps]
+        S & P & Z & HM --> OUT[Annotated +<br/>bird's-eye video]
+    end
+    V --> DET
+    HSV --> KP
+    SAM --> M
+    KF --> M
+    KM --> M
+    H --> M
 ```
 
-## How It Works
+## How each piece works
 
-```
-Video Frame
-    │
-    ├─► YOLO detection ──► Player bounding boxes ──► SAM 2 tracking (with memory)
-    │                                                     │
-    ├─► YOLO detection ──► Ball position ──► Kalman filter (when occluded)
-    │                                             │
-    ├─► HSV white-line enhancement                │
-    │       │                                     │
-    │       ▼                                     │
-    │   YOLOv8-pose inference                     │
-    │       │                                     │
-    │       ▼                                     │
-    │   12 field keypoints + visibility           │
-    │       │                                     │
-    │       ▼                                     ▼
-    │   Homography (smoothed) ◄──────── Player/ball positions
-    │       │
-    │       ▼
-    │   Perspective transform to field coords
-    │       │
-    │       ├──► Speed / Distance per player
-    │       ├──► Ball Possession by team & zone
-    │       └──► Zone Occupancy by team & third
-    │                     │
-    ▼                     ▼
-         Annotated output video
-```
+### First mile: getting a usable signal from one camera
 
-## Technologies
+- **White-line enhancement.** Each frame goes to HSV color space. A binary mask keeps white pixels. Morphological dilation thickens the field lines, so keypoints hold up under changing light and camera conditions.
+- **Camera-to-field calibration.** Detected keypoints (pixel space) are matched to their known positions on a FIFA-standard field. `cv2.findHomography` gives the pixel→meter transform. It is **exponentially smoothed** across frames (α = 0.8) to stop jitter.
 
-| Category | Tools |
-|----------|-------|
-| Object Detection & Pose | YOLOv8 (Ultralytics) |
-| Player Tracking | SAM 2 (Segment Anything Model 2) |
-| Ball Trajectory Prediction | Kalman Filter |
-| Deep Learning | TensorFlow / Keras |
-| Computer Vision | OpenCV |
-| Data Augmentation | Albumentations |
-| Annotation | Label Studio, Roboflow |
-| Team Clustering | scikit-learn (K-Means) |
-| Visualization | Matplotlib, Seaborn |
-| Compute | MSOE Rosie supercomputer (SLURM, NVIDIA V100 / T4 / DGX H100) |
+### Middle mile: the models
 
-## Field Geometry
+- **Field keypoints.** A **YOLOv8x-pose** model, fine-tuned to find 12 landmarks: center circle (top, bottom, left, right), midfield line (top, bottom), left/right D-line centers, and left/right D-line top/bottom intersections. Labels were made in Label Studio, converted to COCO/YOLO format ([`src/transforming_json_keypoints.py`](src/transforming_json_keypoints.py)), and refined across **6 dataset versions** on [Roboflow](https://universe.roboflow.com/manchado53/keypoint-msoe/dataset/6).
+- **CNN baseline.** A custom **TensorFlow/Keras CNN** with two heads (keypoint visibility classification + coordinate regression), built to compare against YOLO-pose ([`src/main_cnn.py`](src/main_cnn.py)).
+- **Player detection and teams.** YOLO finds players. Jersey colors are averaged and grouped with **K-Means**, which splits the two teams. Outlier colors (e.g. bright yellow) flag referees.
+- **Player tracking.** YOLO has no memory between frames, so **SAM 2** tracks players and keeps a unique ID for each. When players overlap (detected by IOU), or a player leaves and comes back, YOLO re-prompts SAM 2 to recover the ID.
+- **Ball tracking.** The ball is small, fast, and often hidden. When YOLO loses it, a **Kalman filter** predicts its position from velocity and trajectory.
 
-Standard FIFA field measurements used for the homography destination points:
+### Last mile: what the coach gets
+
+- **Speed** (m/s) and **total distance** (m) per player, from consecutive field positions.
+- **Off-ball runs:** high-speed movement while not in possession.
+- **Possession by zone:** the field is a 3×3 grid. Each frame, the closest player to the ball (within a radius) gets possession. Output: per-team possession %, overall and per zone.
+- **Zone occupancy:** how much time each team spends in the defensive, middle, and attacking thirds.
+- **Heatmaps** of each player's movement.
+- **Annotated video:** team-colored player dots, live speed and distance labels, ball marker, and an on-screen possession HUD. Plus a 2D bird's-eye field view.
+
+## What I'd do next (production path)
+
+Future work, not yet built:
+
+- **Faster tracking.** SAM 2 works but is slow. Try a lighter tracker (e.g. ByteTrack / BoT-SORT via `boxmot`) and keep SAM 2 only for hard re-ID cases. See [`related_works.md`](related_works.md) for the survey behind this.
+- **Newer detectors.** Benchmark RF-DETR against the YOLO models for players, ball, and keypoints.
+- **Roboflow Workflows.** Chain detection → keypoints → homography → analytics as one hosted, versioned workflow instead of scripts on a cluster.
+- **Edge deployment.** Run the pipeline on a small GPU at the field, so the coach gets stats right after the match without uploading footage.
+- **Multi-camera.** Add a second camera to cover the far side of the field and reduce occlusion.
+- **Active learning.** Send low-confidence frames back into the Roboflow dataset for the next labeling round (version 7+).
+
+## Tech stack
+
+**Python · Ultralytics YOLOv8 / YOLOv8-pose · SAM 2 · OpenCV · TensorFlow / Keras · scikit-learn · Albumentations · Roboflow · Label Studio · Matplotlib / Seaborn · SLURM on MSOE Rosie (V100 / T4 / DGX H100)**
+
+**Built with [Roboflow](https://roboflow.com):** the field-keypoint dataset is public on [Roboflow Universe](https://universe.roboflow.com/manchado53/keypoint-msoe/dataset/6) (CC BY 4.0).
+
+## Field geometry
+
+FIFA-standard measurements used as the homography target:
 
 | Measurement | Value |
 |-------------|-------|
 | Field length | 107.79 m |
 | Field width | 63.74 m |
-| Midfield circle radius | 9.15 m |
+| Center circle radius | 9.15 m |
 | Penalty box width | 40.3 m |
 | Penalty box depth | 16.5 m |
-| D-line distance from endline | 20.15 m |
-
-12 landmarks are tracked: center circle (top, bottom, left, right), midfield line (top, bottom), left/right D-line centers, and left/right D-line top/bottom intersections.
+| D-line distance from end line | 20.15 m |
 
 ## Training
 
-YOLOv8x-pose was fine-tuned on our custom keypoint dataset:
+YOLOv8x-pose was fine-tuned on the keypoint dataset (v6) on Rosie:
 
 ```bash
-# Submitted via SLURM on Rosie
 sbatch scripts/train_yolo_pose_slurm.sh
 ```
 
-Configuration: 100 epochs, batch size 16, image size 640x640, mosaic augmentation disabled, single GPU.
+Config: 100 epochs, batch 16, 640×640 images, mosaic augmentation off, one GPU.
 
-The dataset evolved through 6 versions with increasing annotation quality and coverage, hosted on [Roboflow](https://universe.roboflow.com/manchado53/keypoint-msoe/dataset/6) under CC BY 4.0.
-
-## Running Inference
+## Running inference
 
 ```bash
-# Submit to Rosie cluster
+# On the Rosie cluster
 sbatch scripts/run_job.sh
-```
 
-Or run directly:
-
-```bash
+# Or directly
 python src/main.py
 ```
 
-The analytics pipeline (`src/main.py`) expects:
-- A video file (e.g., `30SecondsAurora.mp4`)
-- Player bounding boxes from YOLO + SAM 2 (serialized as pickle)
-- Ball positions from YOLO + Kalman filter (serialized as pickle)
+`src/main.py` expects:
+- a match video file (e.g. `30SecondsAurora.mp4`)
+- player bounding boxes from YOLO + SAM 2 (pickled)
+- ball positions from YOLO + Kalman filter (pickled)
+- fine-tuned keypoint weights at the path set in [`src/constants.py`](src/constants.py)
 
-## Notebooks
-
-The Jupyter notebooks in `notebooks/` automatically add `src/` to their Python path so they can import the project modules. Open them from the repo root:
-
-```bash
-cd TheScript
-jupyter notebook notebooks/FullHomography_03_21_2025.ipynb
-```
-
-- **FullHomography_03_21_2025.ipynb** — End-to-end exploration of keypoint detection, homography estimation, player tracking, possession analysis, zone occupancy, and video generation. Loads pre-computed player bounding boxes and ball positions from `/data/ai_club/SoccerStats2024/`.
-- **uploading.ipynb** — Downloads keypoint datasets from Roboflow and runs basic model inference tests.
-
-## Dependencies
+## Project structure
 
 ```
-opencv-python
-numpy
-tensorflow
-scikit-learn
-matplotlib
-albumentations
-seaborn
-ultralytics
-keras-tuner
-pickle5
+AI-Driven-Soccer-Analysis/
+├── README.md
+├── requirements.txt
+├── related_works.md                       # Literature survey: production soccer video analytics
+├── AI_Soccer_Video_Analysis_Research.pdf  # Research report on scaling the system
+│
+├── src/
+│   ├── main.py                         # Main video pipeline (YOLO-pose keypoints)
+│   ├── main_cnn.py                     # Same pipeline with the CNN keypoint baseline
+│   ├── constants.py                    # Model path config
+│   ├── soccer_util_last.py             # Preprocessing, homography, CNN model, field constants, eval
+│   ├── keypoint_model.py               # YOLO pose model wrapper
+│   ├── grouping_teams.py               # Player-to-team mapping and colors
+│   ├── distance_speed_stimator.py      # Speed / distance / off-ball runs
+│   ├── possesion_tracker.py            # Possession by field zone
+│   ├── stimating_team_position.py      # Zone occupancy by third
+│   ├── heatmap.py                      # Player heatmaps
+│   ├── video_creator.py                # Annotated + bird's-eye video rendering
+│   └── transforming_json_keypoints.py  # Label Studio JSON -> COCO
+│
+├── notebooks/
+│   ├── FullHomography_03_21_2025.ipynb # End-to-end exploration: keypoints, homography, tracking, analytics
+│   ├── TestingSAMInference.ipynb       # SAM 2 tracking experiments
+│   └── uploading.ipynb                 # Pull Roboflow datasets + quick inference tests
+│
+├── scripts/                            # SLURM jobs for Rosie
+│   ├── run_job.sh                      # Inference (DGX H100)
+│   └── train_yolo_pose_slurm.sh        # YOLOv8-pose training (V100)
+│
+├── assets/
+│   └── viets field.PNG                 # Field diagram used for 2D projection
+│
+├── weights/   (gitignored)             # best.pt, yolov8x-pose.pt, yolov8n-pose.pt, yolov8n.pt
+├── data/      (gitignored)             # keypoint-msoe-{1..6} Roboflow datasets
+├── logs/      (gitignored)             # SLURM logs
+└── runs/      (gitignored)             # YOLOv8 training outputs
 ```
 
-Install with:
+## Setup
 
 ```bash
 pip install -r requirements.txt
+pip install ultralytics   # YOLOv8; not yet listed in requirements.txt
 ```
+
+Notebooks add `src/` to their Python path. Open them from the repo root:
+
+```bash
+jupyter notebook notebooks/FullHomography_03_21_2025.ipynb
+```
+
+`FullHomography_03_21_2025.ipynb` loads pre-computed player boxes and ball positions from `/data/ai_club/SoccerStats2024/` on Rosie.
