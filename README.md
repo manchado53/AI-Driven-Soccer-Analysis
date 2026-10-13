@@ -8,7 +8,7 @@
 [![Stats demo](https://img.shields.io/badge/▶_Demo-Possession,_speed_%26_distance-FF0000?logo=youtube&logoColor=white)](https://www.youtube.com/watch?v=loeXq97BnCw)
 [![Presentation](https://img.shields.io/badge/▶_Talk-Full_presentation-FF0000?logo=youtube&logoColor=white)](https://www.youtube.com/watch?v=UKSFIYSSHr8&t=52s)
 [![Roboflow dataset](https://img.shields.io/badge/Built_with-Roboflow-6706CE)](https://universe.roboflow.com/manchado53/keypoint-msoe/dataset/6)
-[![Paper](https://img.shields.io/badge/📄_Paper-MICS-blue)](paper/AI_Driven_Soccer_Analysis_Using_Computer_Vision.pdf)
+[![arXiv](https://img.shields.io/badge/arXiv-2604.08722-b31b1b?logo=arxiv&logoColor=white)](https://arxiv.org/abs/2604.08722)
 
 <a href="https://www.youtube.com/watch?v=HKj34-95-PM"><img src="https://img.youtube.com/vi/HKj34-95-PM/hqdefault.jpg" alt="Demo: ball, players and referee tracked, with 2D heatmap" width="49%"></a>
 <a href="https://www.youtube.com/watch?v=loeXq97BnCw"><img src="https://img.youtube.com/vi/loeXq97BnCw/hqdefault.jpg" alt="Demo: possession, speed and distance stats from computer vision" width="49%"></a>
@@ -17,7 +17,7 @@
 
 Built by **Adrian Manchado**, **Tanner Cellio**, and **Jonathan (Jonny) Keane**, with **Yiyang Wang** (MSOE), for MSOE men's soccer coach **Rob Harrington**.
 
-📄 **Paper:** [*AI Driven Soccer Analysis Using Computer Vision*](paper/AI_Driven_Soccer_Analysis_Using_Computer_Vision.pdf), Manchado, Cellio, Keane & Wang, MSOE, 2025. Published at MICS (Midwest Instruction and Computing Symposium).
+📄 **Paper:** [*AI Driven Soccer Analysis Using Computer Vision*](https://arxiv.org/abs/2604.08722), Manchado, Cellio, Keane & Wang. arXiv:2604.08722 (cs.CV). Published at MICS (Midwest Instruction and Computing Symposium).
 
 ## Highlights
 
@@ -165,8 +165,6 @@ AI-Driven-Soccer-Analysis/
 ├── README.md
 ├── requirements.txt
 ├── related_works.md                       # Literature survey: production soccer video analytics
-├── paper/
-│   └── AI_Driven_Soccer_Analysis_Using_Computer_Vision.pdf  # Our MICS paper
 ├── AI_Soccer_Video_Analysis_Research.pdf  # Research report on scaling the system
 │
 ├── src/
