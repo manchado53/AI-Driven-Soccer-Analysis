@@ -21,3 +21,7 @@ __pycache__/
 /model_dir/
 /UR-RL/
 .ipynb_checkpoints/
+
+# README media
+!docs/media/*.png
+!docs/media/*.jpg
