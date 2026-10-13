@@ -8,13 +8,16 @@
 [![Stats demo](https://img.shields.io/badge/▶_Demo-Possession,_speed_%26_distance-FF0000?logo=youtube&logoColor=white)](https://www.youtube.com/watch?v=loeXq97BnCw)
 [![Presentation](https://img.shields.io/badge/▶_Talk-Full_presentation-FF0000?logo=youtube&logoColor=white)](https://www.youtube.com/watch?v=UKSFIYSSHr8&t=52s)
 [![Roboflow dataset](https://img.shields.io/badge/Built_with-Roboflow-6706CE)](https://universe.roboflow.com/manchado53/keypoint-msoe/dataset/6)
+[![Paper](https://img.shields.io/badge/📄_Paper-MICS-blue)](paper/AI_Driven_Soccer_Analysis_Using_Computer_Vision.pdf)
 
 <a href="https://www.youtube.com/watch?v=HKj34-95-PM"><img src="https://img.youtube.com/vi/HKj34-95-PM/hqdefault.jpg" alt="Demo: ball, players and referee tracked, with 2D heatmap" width="49%"></a>
 <a href="https://www.youtube.com/watch?v=loeXq97BnCw"><img src="https://img.youtube.com/vi/loeXq97BnCw/hqdefault.jpg" alt="Demo: possession, speed and distance stats from computer vision" width="49%"></a>
 
 *Click a thumbnail to watch. Left: ball, players and referee tracked with a 2D heatmap. Right: possession, speed and distance stats.*
 
-Built by **Adrian Manchado** and **Tanner Selio** <!-- TODO(Adrian): confirm surname spelling (Selio vs Cellio — the YouTube talk title says Cellio) --> for MSOE men's soccer coach **Rob Harrington**.
+Built by **Adrian Manchado**, **Tanner Cellio**, and **Jonathan (Jonny) Keane**, with **Yiyang Wang** (MSOE), for MSOE men's soccer coach **Rob Harrington**.
+
+📄 **Paper:** [*AI Driven Soccer Analysis Using Computer Vision*](paper/AI_Driven_Soccer_Analysis_Using_Computer_Vision.pdf), Manchado, Cellio, Keane & Wang, MSOE, 2025. Published at MICS (Midwest Instruction and Computing Symposium).
 
 ## Highlights
 
@@ -25,9 +28,19 @@ Built by **Adrian Manchado** and **Tanner Selio** <!-- TODO(Adrian): confirm sur
 - **Coach-facing outputs.** Speed, distance, off-ball runs, possession by zone, zone occupancy, heatmaps, and an annotated video.
 - **Trained on a supercomputer.** Training and inference ran as SLURM jobs on MSOE's **Rosie** cluster (V100, T4, and DGX H100 nodes). See [`scripts/`](scripts/).
 
-<!-- TODO(Adrian): add keypoint model metrics (e.g. mAP50 / mAP50-95 / OKS on the v6 validation split) -->
+## Results (from the paper)
+
+| Piece | Result |
+|---|---|
+| **Player detection** (benchmarked 4 models as SAM 2 prompts) | **YOLOv5x** chosen: F1 **0.845**, precision 0.896, recall 0.800, IoU 0.764. Beat YOLOv8x (F1 0.845), YOLOv11x (0.783), and Faster R-CNN (0.719). Found 17/22 players with no fine-tuning. |
+| **Field keypoints** (custom CNN) | Visibility accuracy **97.2%** on validation (99.9% train). Location error **7.65 px** (0.0138 of image size) on validation. |
+| **Full system** (keypoints + homography) | Average projection error **≈ 0.50 m** on the real field. |
+
+Known gaps, called out in the paper: false positives on ball boys and referees, glare or shadow flipping team colors, and keypoint data from only MSOE's home field.
+
+<!-- TODO(Adrian): add YOLOv8x-pose keypoint metrics (mAP50 / OKS) — the paper's keypoint numbers are for the CNN -->
 <!-- TODO(Adrian): add dataset size (number of labeled images in keypoint-msoe v6) -->
-<!-- TODO(Adrian): add pipeline throughput (frames per second on the H100) -->
+<!-- TODO(Adrian): add pipeline throughput (frames per second) -->
 
 ## The pipeline: first mile → middle mile → last mile
 
@@ -152,6 +165,8 @@ AI-Driven-Soccer-Analysis/
 ├── README.md
 ├── requirements.txt
 ├── related_works.md                       # Literature survey: production soccer video analytics
+├── paper/
+│   └── AI_Driven_Soccer_Analysis_Using_Computer_Vision.pdf  # Our MICS paper
 ├── AI_Soccer_Video_Analysis_Research.pdf  # Research report on scaling the system
 │
 ├── src/
