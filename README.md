@@ -117,6 +117,26 @@ flowchart LR
 
 - **CNN baseline.** We also built a **TensorFlow/Keras CNN** with two heads, one for keypoint visibility and one for coordinates, to compare against YOLO-pose ([`src/main_cnn.py`](src/main_cnn.py)). Its loss counts location error on visible keypoints only. Players often stand on a landmark. The visibility head lets the homography step drop a hidden keypoint instead of trusting a bad location.
 
+The coordinate loss is a **masked MAE**. A hidden keypoint is labeled (−1, −1) and gets visibility $v_{i,j} = 0$, so it adds nothing to the error:
+
+```math
+\mathcal{L}_{xy} = MAE_{masked} = \frac{1}{N}\sum_{i=1}^{N}\frac{\sum_{j=1}^{C} v_{i,j}\left(|x_{i,j}-\hat{x}_{i,j}| + |y_{i,j}-\hat{y}_{i,j}|\right)}{\sum_{j=1}^{C} v_{i,j}}
+```
+
+The visibility head uses binary cross-entropy against the same labels, where $\hat{p}_{i,j}$ is the predicted probability that keypoint $j$ is visible:
+
+```math
+\mathcal{L}_{vis} = -\frac{1}{NC}\sum_{i=1}^{N}\sum_{j=1}^{C}\left[v_{i,j}\log\hat{p}_{i,j} + (1-v_{i,j})\log(1-\hat{p}_{i,j})\right]
+```
+
+We train on a weighted sum, with 10 on the coordinate loss and 1 on the visibility loss:
+
+```math
+\mathcal{L} = 10\,\mathcal{L}_{xy} + \mathcal{L}_{vis}
+```
+
+$N$ is the number of images, $C = 12$ keypoints, $(x, y)$ is the label, and $(\hat{x}, \hat{y})$ is the prediction. We trained with Adam and an exponential-decay learning rate, and a Bayesian search tuned dropout, layer sizes, and learning rate.
+
 <p align="center">
   <img src="docs/media/keypoint-results.jpg" alt="Preprocessed field frame with predicted keypoints in blue next to ground truth in red, above a table of accuracy and mean absolute error on training and test sets" width="60%">
 </p>
