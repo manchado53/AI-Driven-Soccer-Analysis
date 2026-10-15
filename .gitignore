@@ -25,3 +25,4 @@ __pycache__/
 # README media
 !docs/media/*.png
 !docs/media/*.jpg
+!docs/media/eq/*.png
