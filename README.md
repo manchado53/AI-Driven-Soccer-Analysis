@@ -121,8 +121,8 @@ The coordinate loss is a **masked MAE**. A hidden keypoint is labeled (−1, −
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/media/eq/masked-mae-dark.svg">
-    <img src="docs/media/eq/masked-mae.svg" alt="\mathcal{L}_{xy} = MAE_{masked} = \frac{1}{N}\sum_{i=1}^{N}\frac{\sum_{j=1}^{C} v_{i,j}\left(|x_{i,j}-\hat{x}_{i,j}| + |y_{i,j}-\hat{y}_{i,j}|\right)}{\sum_{j=1}^{C} v_{i,j}}">
+    <source media="(prefers-color-scheme: dark)" srcset="docs/media/eq/masked-mae-dark.png">
+    <img src="docs/media/eq/masked-mae.png" width="560" alt="\mathcal{L}_{xy} = \text{MAE}_{\text{masked}} = \frac{1}{N}\sum_{i=1}^{N}\frac{\sum_{j=1}^{C} v_{i,j}\left(|x_{i,j}-\hat{x}_{i,j}| + |y_{i,j}-\hat{y}_{i,j}|\right)}{\sum_{j=1}^{C} v_{i,j}}">
   </picture>
 </p>
 
@@ -130,8 +130,8 @@ The visibility head uses binary cross-entropy against the same labels, where <i>
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/media/eq/visibility-bce-dark.svg">
-    <img src="docs/media/eq/visibility-bce.svg" alt="\mathcal{L}_{vis} = -\frac{1}{NC}\sum_{i=1}^{N}\sum_{j=1}^{C}\left[v_{i,j}\log\hat{p}_{i,j} + (1-v_{i,j})\log(1-\hat{p}_{i,j})\right]">
+    <source media="(prefers-color-scheme: dark)" srcset="docs/media/eq/visibility-bce-dark.png">
+    <img src="docs/media/eq/visibility-bce.png" width="500" alt="\mathcal{L}_{\text{vis}} = -\frac{1}{NC}\sum_{i=1}^{N}\sum_{j=1}^{C}\left[v_{i,j}\log\hat{p}_{i,j} + (1-v_{i,j})\log(1-\hat{p}_{i,j})\right]">
   </picture>
 </p>
 
@@ -139,8 +139,8 @@ We train on a weighted sum, with 10 on the coordinate loss and 1 on the visibili
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/media/eq/total-loss-dark.svg">
-    <img src="docs/media/eq/total-loss.svg" alt="\mathcal{L} = 10\,\mathcal{L}_{xy} + \mathcal{L}_{vis}">
+    <source media="(prefers-color-scheme: dark)" srcset="docs/media/eq/total-loss-dark.png">
+    <img src="docs/media/eq/total-loss.png" width="154" alt="\mathcal{L} = 10\,\mathcal{L}_{xy} + \mathcal{L}_{\text{vis}}">
   </picture>
 </p>
 
