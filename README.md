@@ -42,7 +42,7 @@ This pipeline takes match video from one camera and gives a coach stats. It dete
 | **Field keypoints** (custom CNN) | Visibility accuracy **97.2%** on validation (99.9% train). Location error **7.65 px** (0.0138 of image size) on validation. |
 | **Full system** (keypoints + homography) | Average projection error **≈ 0.50 m** on the real field. |
 
-The paper lists three known gaps. The detector fires on ball boys and referees. Glare or shadow can flip a player's team color. All keypoint data comes from MSOE's home field.
+The paper lists three known gaps. The detector fires on ball boys and referees. Glare or shadow can flip a player's team color. All keypoint data comes from MSOE's home field. [What didn't work](#what-didnt-work) covers these and what we changed.
 
 <!-- TODO(Adrian): add YOLOv8x-pose keypoint metrics (mAP50 / OKS); the paper's keypoint numbers are for the CNN -->
 <!-- TODO(Adrian): add pipeline throughput (frames per second) -->
@@ -56,13 +56,15 @@ The paper lists three known gaps. The detector fires on ball boys and referees. 
 | **CNN keypoint set** | 146 hand-labeled frames from 2 games: 92 with glare on the field, 54 overcast. Most frames show 4 to 12 keypoints. Horizontal flips double the set. | Paper, Sec. 3–4 |
 | **YOLOv8x-pose keypoint set** | [`keypoint-msoe` v6](https://universe.roboflow.com/manchado53/keypoint-msoe/dataset/6): 182 images at 1280×720 (147 train, 25 valid, 10 test), COCO keypoint format. | Roboflow export |
 
-## Pipeline
+**How we built the detection ground truth.** Labeling every player box by hand across 390 frames was too slow, so we let the models draft the labels and kept a human on the final check.
 
 <p align="center">
-  <img src="docs/media/workflow.png" alt="Workflow diagram: field video feeds player detection, SAM 2, team prediction and keypoint prediction, which combine in point homography to produce a 2D point mapping" width="90%">
+  <img src="docs/media/ground-truth-steps.jpg" alt="Seven panels: original frame, YOLO boxes with confidence scores, YOLO detections as points, SAM 2 star prompts, SAM 2 color masks, manually reviewed masks, and final green ground-truth boxes" width="100%">
 </p>
 
-*Workflow figure from the paper. Colored boxes are models. White boxes are data.*
+*Original frame → YOLO boxes → points from each box → SAM 2 prompts → SAM 2 masks → manual review → ground-truth boxes (each mask's bounding box).*
+
+## Pipeline
 
 ```mermaid
 flowchart LR
@@ -113,14 +115,85 @@ flowchart LR
 
 *Left: the 12 keypoints on a top-down image of the field. Right: one labeled frame from game footage.*
 
-- **CNN baseline.** We also built a **TensorFlow/Keras CNN** with two heads, one for keypoint visibility and one for coordinates, to compare against YOLO-pose ([`src/main_cnn.py`](src/main_cnn.py)). Its loss counts location error on visible keypoints only.
-- **Camera-to-field calibration.** We match detected keypoints (pixels) to their known spots on a FIFA-standard field. `cv2.findHomography` returns the pixel-to-meter transform, and exponential smoothing across frames (α = 0.8) stops jitter.
+- **CNN baseline.** We also built a **TensorFlow/Keras CNN** with two heads, one for keypoint visibility and one for coordinates, to compare against YOLO-pose ([`src/main_cnn.py`](src/main_cnn.py)). Its loss counts location error on visible keypoints only. Players often stand on a landmark. The visibility head lets the homography step drop a hidden keypoint instead of trusting a bad location.
+
+The coordinate loss is a **masked MAE**. A hidden keypoint is labeled (−1, −1) and gets visibility $v_{i,j} = 0$, so it adds nothing to the error:
+
+```math
+\mathcal{L}_{xy} = MAE_{masked} = \frac{1}{N}\sum_{i=1}^{N}\frac{\sum_{j=1}^{C} v_{i,j}\left(|x_{i,j}-\hat{x}_{i,j}| + |y_{i,j}-\hat{y}_{i,j}|\right)}{\sum_{j=1}^{C} v_{i,j}}
+```
+
+The visibility head uses binary cross-entropy against the same labels, where $\hat{p}_{i,j}$ is the predicted probability that keypoint $j$ is visible:
+
+```math
+\mathcal{L}_{vis} = -\frac{1}{NC}\sum_{i=1}^{N}\sum_{j=1}^{C}\left[v_{i,j}\log\hat{p}_{i,j} + (1-v_{i,j})\log(1-\hat{p}_{i,j})\right]
+```
+
+We train on a weighted sum, with 10 on the coordinate loss and 1 on the visibility loss:
+
+```math
+\mathcal{L} = 10\,\mathcal{L}_{xy} + \mathcal{L}_{vis}
+```
+
+$N$ is the number of images, $C = 12$ keypoints, $(x, y)$ is the label, and $(\hat{x}, \hat{y})$ is the prediction. We trained with Adam and an exponential-decay learning rate, and a Bayesian search tuned dropout, layer sizes, and learning rate.
+
+<p align="center">
+  <img src="docs/media/keypoint-results.jpg" alt="Preprocessed field frame with predicted keypoints in blue next to ground truth in red, above a table of accuracy and mean absolute error on training and test sets" width="60%">
+</p>
+
+*Predictions (blue) land on the ground truth (red). On the test set, visibility accuracy is 97.2% and location error is 7.65 px.*
+
+- **Camera-to-field calibration.** We match detected keypoints (pixels) to their known spots on a FIFA-standard field. `cv2.findHomography` returns the pixel-to-meter transform, and exponential smoothing across frames (α = 0.8) stops jitter. With the frame flat, we measure in meters, which section 3 needs for speed and distance.
+
+<p align="center">
+  <img src="docs/media/homography-steps.jpg" alt="Three panels: camera frame with named keypoints, the same frame warped into a trapezoid over a top-down field, and the named keypoints on the top-down field" width="100%">
+</p>
+
+*1: keypoints found in the camera view. 2: the homography warps the whole frame onto the field. 3: the same keypoints on the real field layout.*
 
 ### 2. Finding and tracking players
 
-- **Detection and teams.** YOLO finds the players. We average each player's jersey color and group the colors with **K-Means** to split the two teams. Outlier colors, such as bright yellow, mark referees.
-- **Player tracking.** YOLO has no memory between frames. **SAM 2** tracks each player under one ID. YOLO re-prompts SAM 2 to recover the ID after players overlap (by IoU) or a player leaves the frame and comes back.
-- **Ball tracking.** The ball is small and fast, and players hide it. If YOLO loses it, a **Kalman filter** predicts its position from velocity and trajectory.
+- **Detection.** YOLO finds the players. We benchmarked four detectors on our ground-truth frames before choosing one, because the detector's boxes become SAM 2's prompts. A player YOLO misses never gets tracked.
+
+<p align="center">
+  <img src="docs/media/yolo-detection.jpg" alt="Game frame with blue YOLO person boxes and confidence scores on each player" width="49%">
+  <img src="docs/media/detector-comparison.png" alt="Bar chart comparing Faster R-CNN, YOLOv11x, YOLOv8x and YOLOv5x on mean IoU, recall, precision and F1" width="49%">
+</p>
+
+*Left: off-the-shelf YOLO boxes with confidence scores. Right: the four detectors on mean IoU, recall, precision, and F1. The YOLO models led on F1, and we chose YOLOv5x.*
+
+- **Fine-tuning.** After the benchmark we fine-tuned YOLO on our own frames: players from 125 images (325 after augmentation) and the ball from 218 images (566 after augmentation). The confusion matrices show where it still fails: referees get labeled as players, and the model misses the ball about a third of the time. That 32% miss rate is why we added a Kalman filter for the ball.
+
+<p align="center">
+  <img src="docs/media/finetune-confusion.png" alt="Two confusion matrices: players, referees and goalies on the left, with referees often predicted as players; ball on the right with 0.68 detected and 0.32 missed" width="80%">
+</p>
+
+- **Teams (K-Means).** We cut a patch from the chest of each player's box, average its color, and cluster the averages with **K-Means**. K-Means fits because the number of teams is fixed and it runs fast on every frame. Outlier colors, such as bright yellow, mark referees. To keep the split stable, we average each player's color across frames instead of trusting one frame, and we recalculate the centroids every 200 frames so a change in light (sun to shadow) doesn't flip a team.
+
+<p align="center">
+  <img src="docs/media/teams-kmeans.jpg" alt="Top left: grid of nine cropped player images. Top right: 3D scatter of average jersey colors in red, green and blue with two clusters and their centroids. Bottom: game frame with boxes colored blue, white or yellow by team" width="80%">
+</p>
+
+*1: one crop per detected player. 2: their average colors in RGB space, split into two clusters (the red Xs are the centroids). 3: boxes colored by cluster. Yellow is the referee.*
+
+- **Player tracking (SAM 2).** YOLO has no memory between frames, so a player gets a new identity every frame. **SAM 2** tracks each player under one ID from a single point prompt. YOLO re-prompts SAM 2 to recover the ID after players overlap (by IoU) or a player leaves the frame and comes back.
+
+<p align="center">
+  <img src="docs/media/sam2-tracking.gif" alt="Cropped game footage where SAM 2 keeps a colored mask on one player running across the field" width="60%">
+</p>
+
+*SAM 2 follows one player for 280 frames from a single click on frame 0 (sampled every 10th frame).*
+
+- **Ball tracking (Kalman filter).** The ball is small and fast, and it leaves the ground. When YOLO loses it, a **Kalman filter** predicts the next position from the ball's last velocity and trajectory. When YOLO finds the ball again, the filter corrects its estimate with the new measurement.
+
+<p align="center">
+  <img src="docs/media/ball-kalman.jpg" alt="Three frames: YOLO boxes the ball in red, then the ball is in the air with no box, then the ball is boxed again further along its path" width="100%">
+  <img src="docs/media/kalman-equations.png" alt="Kalman filter predict and update equations" width="60%">
+</p>
+
+*Top: the ball is found, lost in the air, and picked up again along the predicted path. Bottom: the two Kalman steps. Predict moves the last state forward. Update blends that guess with the new detection, weighted by the Kalman gain K.*
+
+- **Players on the field.** With teams assigned and keypoints found, the homography from section 1 moves each player's foot position onto the top-down field.
 
 <p align="center">
   <img src="docs/media/teams-keypoints.jpg" alt="Game frame with YOLO boxes colored red or blue by team, and white dots on field keypoints" width="54%">
@@ -150,6 +223,29 @@ flowchart LR
 </p>
 
 *Left: annotated frame with a possession panel (MSOE 43%, Aurora 56%). Right: heatmap of one player's positions on the top-down field.*
+
+<p align="center">
+  <img src="docs/media/distance-top10.png" alt="Horizontal bar chart of the ten players who covered the most distance, in meters" width="49%">
+  <img src="docs/media/zone-occupancy.jpg" alt="Top-down field split into defensive, middle and attacking thirds, one row per team, each shaded and labeled with the share of time spent there" width="49%">
+</p>
+
+*Left: the ten players who covered the most ground in the clip. Right: zone occupancy, one row per team, showing how much time each team spent in its defensive, middle, and attacking third.*
+
+## What didn't work
+
+Each of these changed the design.
+
+- **The detector boxes everyone on the field.** YOLO's "person" class boxes ball boys, coaches, and referees along with the players, and each wrong box becomes a wrong SAM 2 prompt. We added a referee class and a jersey-color outlier check. Ball boys still get through.
+
+<p align="center">
+  <img src="docs/media/non-player-detections.jpg" alt="Game frame where every detected person carries a Player label, including a ball boy on the sideline labeled Player 7" width="70%">
+</p>
+
+*"Player 7" is a ball boy on the sideline. The tracker gives the ball boy an ID like everyone else.*
+
+- **SAM 2 is the wrong tool for the ball.** SAM 2 tracks players well because a player is a large shape that changes slowly. The ball is a few pixels wide, moves fast, and leaves the ground. We ruled SAM 2 out for it and used a fine-tuned YOLO ball class plus a Kalman filter instead.
+- **SAM 2 is slow.** One mask per player, every frame, is too slow for live use. It works for postgame analysis on a cluster, and it's the first thing to replace (see below).
+- **One field.** Every keypoint label comes from MSOE's home field, so the keypoint model hasn't been tested on another stadium's lines or camera angle.
 
 ## What I'd do next (production path)
 
